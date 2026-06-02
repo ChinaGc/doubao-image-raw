@@ -1,0 +1,51 @@
+{
+    "manifest_version": 3,
+    "name": "doubao-image-raw",
+    "version": "1.0.0",
+    "description": "保存Token，解析接口图片视频资源",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage",
+        "downloads"
+    ],
+    "host_permissions": [
+        "https://www.doubao.com/*"
+    ],
+    "icons": {
+        "16": "icons/icon.png",
+        "32": "icons/icon.png",
+        "48": "icons/icon.png",
+        "128": "icons/icon.png"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_width": 380,
+        "default_height": 220,
+        "default_icon": "icons/icon.png"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://www.doubao.com/chat/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "inject.js"
+            ],
+            "matches": [
+                "https://www.doubao.com/*"
+            ]
+        }
+    ]
+}
