@@ -15,7 +15,6 @@ function setStatus(text, color = '#666') {
 
 // 初始化：拉取配置存storage + 回填token
 (async function init() {
-
     // 回填token
     const res = await chrome.storage.local.get(STORAGE_KEY);
     if (res[STORAGE_KEY]) {
@@ -31,12 +30,6 @@ function setStatus(text, color = '#666') {
     } else {
         vx.innerHTML = `作者微信号：获取失败`;
     }
-
-    // 使用常量KEY保存配置
-    // if (jsonData) {
-    //     await chrome.storage.local.set({ [CONFIG_KEY]: jsonData })
-    // }
-
 })();
 
 // 按钮点击
