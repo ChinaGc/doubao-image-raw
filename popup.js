@@ -67,7 +67,7 @@ scanBtn.onclick = async () => {
 };
 
 async function getJsonData() {
-    const url = 'https://xiaoman99.oss-cn-hangzhou.aliyuncs.com/hb-web-admin/2026/06/03/aJrmtiRIr728DBU8tbQ7b11RYPxV8axC.json'
+    const url = 'https://www.xiaoman999.com/web/i.json'
     try {
         const resp = await fetch(url)
         if (!resp.ok) throw new Error(resp.statusText)
