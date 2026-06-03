@@ -26,24 +26,49 @@
 		return oldSend.apply(this, args)
 	}
 
-	// inject.js 追加 fetch劫持
+	// inject.js 追加 fetch劫持【修改：只携带chat_ability才捕获响应】
 	const originFetch = window.fetch;
 	window.fetch = async function (input, init) {
 		const url = typeof input === 'string' ? input : input.url;
-		const resp = await originFetch(input, init);
-		// 匹配目标接口
-		const matched = TARGET_APIS.some(api => url.includes(api));
-		if (!matched) {
-			return
+		// 1. 非目标接口直接放行
+		const isTargetApi = TARGET_APIS.some(api => url.includes(api));
+		if (!isTargetApi) {
+			return originFetch(input, init);
 		}
-		const cloneResp = resp.clone();
-		const text = await cloneResp.text();
-		// 和XHR共用同一套消息格式发给content
-		window.postMessage({
-			source: "doubao-image-raw",
-			api: url,
-			body: text
-		})
-		return resp;
+
+		let needHook = false;
+		// 解析POST请求body，查找chat_ability字段
+		if (init && init.method?.toUpperCase() === "POST" && init.body) {
+			try {
+				let reqBodyStr = "";
+				// 处理FormData/Blob等只处理json字符串
+				if (typeof init.body === "string") {
+					reqBodyStr = init.body;
+				}
+				const reqJson = JSON.parse(reqBodyStr);
+				// 顶层存在chat_ability标记为需要劫持响应
+				if (reqJson && reqJson.chat_ability) {
+					needHook = true;
+				}
+			} catch {
+				// json解析失败=非json参数，不需要捕获
+				needHook = false;
+			}
+		}
+
+		// 只有needHook为true才克隆响应、推送消息给content
+		if (needHook) {
+			const resp = await originFetch(input, init);
+			const cloneResp = resp.clone();
+			const text = await cloneResp.text();
+			window.postMessage({
+				source: "doubao-image-raw",
+				api: url,
+				body: text
+			})
+			return resp;
+		}
+
+		return originFetch(input, init);;
 	};
 })();
