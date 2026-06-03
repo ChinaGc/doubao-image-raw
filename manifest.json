@@ -10,7 +10,8 @@
         "downloads"
     ],
     "host_permissions": [
-        "https://www.doubao.com/*"
+        "https://www.doubao.com/*",
+        "https://xiaoman99.oss-cn-hangzhou.aliyuncs.com/*"
     ],
     "icons": {
         "16": "icons/icon.png",
