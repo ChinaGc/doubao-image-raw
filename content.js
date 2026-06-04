@@ -1,3 +1,12 @@
+console.log("content start");
+// ===================== 页面注入隔离脚本 =====================
+(function injectScript() {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("inject.js");
+    (document.head || document.documentElement).appendChild(script);
+    script.onload = () => script.remove();
+})();
+
 // ===================== 常量配置区【置顶统一管理】 =====================
 const STORAGE_KEY_IMG = "raw_image_bucket";
 const STORAGE_KEY_VID = "raw_video_bucket";
@@ -20,7 +29,6 @@ const OBSERVER_OPT = { childList: true, subtree: true };
 const OBSERVE_DELAY = 300;
 const BTN_RESET_DELAY = 4000;
 
-console.log("content start");
 
 // ===================== 上下文&Storage安全工具 =====================
 /** 校验插件上下文是否有效，防止Extension context invalidated */
@@ -217,13 +225,6 @@ async function parseChatComplete(eventStreamBody) {
     await saveVideos(videoBucket);
 }
 
-// ===================== 页面注入隔离脚本 =====================
-(function injectScript() {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("inject.js");
-    (document.head || document.documentElement).appendChild(script);
-    script.onload = () => script.remove();
-})();
 
 // ===================== inject页面跨域消息监听 =====================
 window.addEventListener("message", async (event) => {
@@ -317,22 +318,56 @@ async function createDownloadVideoLink(img) {
     button.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!isExsitRaw) return;
 
+        if (!isExsitRaw) return;
         button.disabled = true;
-        button.innerText = '下载中...';
-        const playUrl = await getUrlByVid(data.vid);
-        if (playUrl) {
+        button.innerText = '获取视频地址...';
+        try {
+            const playUrl = await getUrlByVid(data.vid);
+            if (!playUrl) {
+                button.innerText = '获取失败';
+                setTimeout(() => {
+                    button.innerText = '下载原视频';
+                    button.disabled = false;
+                }, 1000);
+                return;
+            }
+            button.innerText = '提交下载...';
             chrome.runtime.sendMessage({
                 action: "downloadImage",
                 url: playUrl,
                 filename: `${data.vid}-无水印视频.mp4`
+            }, (res) => {
+                if (chrome.runtime.lastError) {
+                    button.innerText = '下载失败';
+                    setTimeout(() => {
+                        button.innerText = '下载原视频';
+                        button.disabled = false;
+                    }, 1000);
+                    return;
+                }
+                if (!res?.success) {
+                    button.innerText = '下载失败';
+                    setTimeout(() => {
+                        button.innerText = '下载原视频';
+                        button.disabled = false;
+                    }, 1000);
+                    return;
+                }
+                button.innerText = '已开始下载';
+                setTimeout(() => {
+                    button.innerText = '下载原视频';
+                    button.disabled = false;
+                }, 800);
             });
+        } catch (err) {
+            console.error(err);
+            button.innerText = '下载失败';
+            setTimeout(() => {
+                button.innerText = '下载原视频';
+                button.disabled = false;
+            }, 1000);
         }
-        setTimeout(() => {
-            button.innerText = '下载原视频';
-            button.disabled = false;
-        }, BTN_RESET_DELAY);
     });
 
     img.after(button);
@@ -367,16 +402,35 @@ async function createDownloadLink(img) {
         if (!isExsitRaw) return;
 
         button.disabled = true;
-        button.innerText = '下载中...';
+        button.innerText = '正在下载....';
+
         chrome.runtime.sendMessage({
             action: "downloadImage",
             url: data.image_ori_raw.url,
             filename: `${data.gen_params.prompt}-无水印原图.png`
+        }, (res) => {
+            if (chrome.runtime.lastError) {
+                button.innerText = '下载失败';
+                setTimeout(() => {
+                    button.innerText = '下载原图';
+                    button.disabled = false;
+                }, 1000);
+                return;
+            }
+            if (!res?.success) {
+                button.innerText = '下载失败';
+                setTimeout(() => {
+                    button.innerText = '下载原图';
+                    button.disabled = false;
+                }, 1000);
+                return;
+            }
+            button.innerText = '已加入下载';
+            setTimeout(() => {
+                button.innerText = '下载原图';
+                button.disabled = false;
+            }, 800);
         });
-        setTimeout(() => {
-            button.innerText = '下载原图';
-            button.disabled = false;
-        }, BTN_RESET_DELAY);
     });
 
     img.closest('picture')?.after(button);

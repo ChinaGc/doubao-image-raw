@@ -50,7 +50,7 @@ scanBtn.onclick = async () => {
         chrome.tabs.sendMessage(tab.id, { action: 'scanImages', token: token }, (response) => {
             scanBtn.disabled = false;
             if (chrome.runtime.lastError) {
-                console.log(chrome.runtime.lastError);
+                console.log(JSON.stringify(chrome.runtime.lastErro));
                 setStatus('请刷新页面后重试', 'red');
                 return;
             }
