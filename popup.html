@@ -33,32 +33,34 @@
         }
         .vx {
             margin-bottom: 16px;
-            font-size: 12px;
+            font-size:12px;
             color:#86909c;
         }
         .label {
             display: block;
             margin: 12px 0 6px;
-            font-size: 13px;
+            font-size:13px;
             color: #4b5563;
         }
-        /* 文本域样式 */
         #tokenInput {
             width: 100%;
-            height: 90px;
+            height: 42px;
             border: 1px solid #e2e8f0;
             border-radius: 10px;
-            padding: 10px 14px;
+            padding: 0 14px;
             font-size:13px;
             background:#fafbfd;
             outline: none;
             transition: all 0.24s ease;
-            resize: none; /* 禁止拖动缩放 */
         }
         #tokenInput:focus {
             border-color: #409eff;
             background:#fff;
             box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.12);
+        }
+        .exp-tip {
+            margin-top:6px;
+            font-size:12px;
         }
         .actions {
             margin-top: 18px;
@@ -111,8 +113,8 @@
         <div class="vx" id="vx">作者微信号：XXX</div>
 
         <label class="label">用户 Token</label>
-        <!-- input替换为textarea -->
-        <textarea id="tokenInput" placeholder="粘贴你的Token密钥"></textarea>
+        <input id="tokenInput" placeholder="粘贴你的Token密钥">
+        <div class="exp-tip" id="expDate">未填入Token</div>
 
         <div class="actions">
             <button id="scanBtn">一键去水印</button>

@@ -2,26 +2,78 @@ const input = document.getElementById('tokenInput');
 const scanBtn = document.getElementById('scanBtn');
 const statusEl = document.getElementById('status');
 const vx = document.getElementById('vx');
+const expDateEl = document.getElementById('expDate');
 
-// 顶部统一定义所有存储KEY
+// 和签发、content保持一致
+const SEC_KEY = 2789451632;
+const PRE_FIX = "sdf@_k9";
+const SUF_FIX = "&23z_pq";
+
 const STORAGE_KEY = 'user_token';
 const CONFIG_KEY = 'remoteConfig';
 
-// 状态更新函数
+// 解密函数
+function decodeExp(token) {
+    try {
+        const raw = atob(token);
+        let body = raw.slice(PRE_FIX.length);
+        body = body.slice(0, body.length - SUF_FIX.length);
+        const cipherNum = Number(body);
+        if (isNaN(cipherNum)) return null;
+        const realExp = cipherNum ^ SEC_KEY;
+        // 合法时间戳范围：2025~2035年秒数，乱码算无效
+        if(realExp < 1735660800 || realExp > 2079676800){
+            return null;
+        }
+        return realExp;
+    } catch {
+        return null;
+    }
+}
+
+// 固定格式 yyyy-mm-dd
+function secToDate(sec) {
+    const d = new Date(sec * 1000);
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+}
+
+function refreshExpView(token) {
+    if(!token){
+        expDateEl.textContent = "未填入Token";
+        expDateEl.style.color = "#999";
+        return;
+    }
+    const expSec = decodeExp(token);
+    const nowSec = Date.now()/1000;
+    if(!expSec){
+        expDateEl.textContent = "Token格式错误";
+        expDateEl.style.color = "red";
+    }else if(expSec < nowSec){
+        expDateEl.textContent = `已过期｜到期：${secToDate(expSec)}`;
+        expDateEl.style.color = "red";
+    }else{
+        expDateEl.textContent = `有效｜到期：${secToDate(expSec)}`;
+        expDateEl.style.color = "#099441";
+    }
+}
+
 function setStatus(text, color = '#666') {
     statusEl.innerHTML = text;
     statusEl.style.color = color;
 }
 
-// 初始化：拉取配置存storage + 回填token
 (async function init() {
-    // 回填token
     const res = await chrome.storage.local.get(STORAGE_KEY);
     if (res[STORAGE_KEY]) {
         input.value = res[STORAGE_KEY];
         setStatus('Token已加载，可直接操作');
+        refreshExpView(input.value);
     } else {
         setStatus('请输入Token', 'red');
+        refreshExpView("");
     }
 
     let jsonData = await getJsonData();
@@ -32,7 +84,11 @@ function setStatus(text, color = '#666') {
     }
 })();
 
-// 按钮点击
+// 输入实时检测
+input.oninput = ()=>{
+    refreshExpView(input.value.trim());
+};
+
 scanBtn.onclick = async () => {
     const token = input.value.trim();
     if (!token) {
@@ -44,13 +100,13 @@ scanBtn.onclick = async () => {
     scanBtn.disabled = true;
     setStatus('Token保存成功，开始处理...');
     await chrome.storage.local.set({ [STORAGE_KEY]: token });
+    refreshExpView(token);
 
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         chrome.tabs.sendMessage(tab.id, { action: 'scanImages', token: token }, (response) => {
             scanBtn.disabled = false;
             if (chrome.runtime.lastError) {
-                console.log(JSON.stringify(chrome.runtime.lastErro));
                 setStatus('请刷新页面后重试', 'red');
                 return;
             }
@@ -59,7 +115,7 @@ scanBtn.onclick = async () => {
             let msg = `${imgMsg}<br/>${vrMsg}`;
             setStatus(msg, 'green');
         });
-    } catch (err) {
+    } catch (err){
         scanBtn.disabled = false;
         console.error(err);
         setStatus('处理失败，请重试', 'red');

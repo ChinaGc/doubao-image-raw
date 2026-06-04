@@ -71,14 +71,32 @@ async function safeRemove(keyArr) {
     }
 }
 
-// ===================== JWT 公共校验工具（抽离，解决两处重复校验） =====================
-function base64UrlDecode(str) {
-    str = str.replace(/-/g, '+').replace(/_/g, '/');
-    while (str.length % 4) str += '=';
-    return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+// ===================== 简易BASE64时效Token工具【替换原JWT代码】 =====================
+/** 解密：token(base64) → 原始过期秒时间戳 */
+
+// 和签发脚本完全一致
+const SEC_KEY = 2789451632;
+const PRE_FIX = "sdf@_k9";
+const SUF_FIX = "&23z_pq";
+/** 解密：token→base64→去前后掩码→异或→真实过期时间戳 */
+function decodeExp(token) {
+  try {
+    const raw = atob(token);
+    // 裁剪前缀
+    let body = raw.slice(PRE_FIX.length);
+    // 裁剪后缀
+    body = body.slice(0, body.length - SUF_FIX.length);
+    const cipherNum = Number(body);
+    if (isNaN(cipherNum)) return NaN;
+    // 异或还原原始过期时间
+    const realExp = cipherNum ^ SEC_KEY;
+    return realExp;
+  } catch {
+    return NaN;
+  }
 }
 
-/** JWT格式+过期统一校验，返回校验结果+提示文案 */
+/** 简易token时效校验（替换旧JWT校验） */
 async function checkUserToken() {
     const tokenObj = await safeGet(STORAGE_KEY_USER);
     const token = tokenObj?.[STORAGE_KEY_USER];
@@ -86,22 +104,17 @@ async function checkUserToken() {
     if (!token) {
         return { valid: false, msg: 'token为空，请在插件弹窗填写token', count: 0 };
     }
-
-    const arr = token.split('.');
-    if (arr.length !== 3) return { valid: false, msg: 'token无效或已过期，请联系作者重新获取', count: 0 };
-
-    try {
-        const payload = JSON.parse(base64UrlDecode(arr[1]));
-        const nowSec = Date.now() / 1000;
-        if (payload.exp < nowSec) {
-            return { valid: false, msg: 'token无效或已过期，请联系作者重新获取', count: 0 };
-        }
-    } catch {
+    // 解码
+    const exp = decodeExp(token);
+    const nowSec = Date.now() / 1000;
+    if (isNaN(exp) || exp < nowSec) {
         return { valid: false, msg: 'token无效或已过期，请联系作者重新获取', count: 0 };
     }
-
     return { valid: true };
 }
+
+
+
 
 // ===================== 通用工具方法 =====================
 function getKeyFromUrl(url) {
