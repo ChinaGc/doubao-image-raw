@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "doubao-image-raw",
     "version": "1.0.0",
-    "description": "保存Token，解析接口图片视频资源",
+    "description": "保存激活码，解析接口图片视频资源",
     "permissions": [
         "activeTab",
         "scripting",

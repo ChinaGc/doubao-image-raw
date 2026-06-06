@@ -102,13 +102,13 @@ async function checkUserToken() {
     const token = tokenObj?.[STORAGE_KEY_USER];
 
     if (!token) {
-        return { valid: false, msg: 'token为空，请在插件弹窗填写token', count: 0 };
+        return { valid: false, msg: '激活码为空，请在插件弹窗填写激活码', count: 0 };
     }
     // 解码
     const exp = decodeExp(token);
     const nowSec = Date.now() / 1000;
     if (isNaN(exp) || exp < nowSec) {
-        return { valid: false, msg: 'token无效或已过期，请联系作者重新获取', count: 0 };
+        return { valid: false, msg: '激活码无效或已过期，请联系作者重新获取', count: 0 };
     }
     return { valid: true };
 }

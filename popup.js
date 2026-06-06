@@ -42,14 +42,14 @@ function secToDate(sec) {
 
 function refreshExpView(token) {
     if(!token){
-        expDateEl.textContent = "未填入Token";
+        expDateEl.textContent = "未填入激活码";
         expDateEl.style.color = "#999";
         return;
     }
     const expSec = decodeExp(token);
     const nowSec = Date.now()/1000;
     if(!expSec){
-        expDateEl.textContent = "Token格式错误";
+        expDateEl.textContent = "激活码格式错误";
         expDateEl.style.color = "red";
     }else if(expSec < nowSec){
         expDateEl.textContent = `已过期｜到期：${secToDate(expSec)}`;
@@ -69,10 +69,10 @@ function setStatus(text, color = '#666') {
     const res = await chrome.storage.local.get(STORAGE_KEY);
     if (res[STORAGE_KEY]) {
         input.value = res[STORAGE_KEY];
-        setStatus('Token已加载，可直接操作');
+        setStatus('激活码已加载，可直接操作');
         refreshExpView(input.value);
     } else {
-        setStatus('请输入Token', 'red');
+        setStatus('请输入激活码', 'red');
         refreshExpView("");
     }
 
@@ -92,13 +92,13 @@ input.oninput = ()=>{
 scanBtn.onclick = async () => {
     const token = input.value.trim();
     if (!token) {
-        setStatus('Token不能为空，请输入后再操作', 'red');
+        setStatus('激活码不能为空，请输入后再操作', 'red');
         input.focus();
         return;
     }
 
     scanBtn.disabled = true;
-    setStatus('Token保存成功，开始处理...');
+    setStatus('激活码保存成功，开始处理...');
     await chrome.storage.local.set({ [STORAGE_KEY]: token });
     refreshExpView(token);
 
