@@ -277,7 +277,6 @@ function checkTokenValid(token) {
 // ========== 请手动修改以下配置 ==========
 const GITLAB_HOST = "https://gitlab.xiaoman999.com";  // 你的自建GitLab地址
 const PROJECT_PATH = "xiaoman/doubao-tokens";     // 用户名/仓库名
-const PRIVATE_TOKEN = "glpat-YKG8QC_YGaEJxDevPL2p";    // 访问令牌
 const FILE_PATH = "used_tokens.json";          // 目标文件
 const BRANCH = "main";                         // 仓库分支 main / master
 
