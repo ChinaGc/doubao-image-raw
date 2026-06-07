@@ -6,7 +6,8 @@ const expDateEl = document.getElementById('expDate');
 
 const STORAGE_KEY = 'user_token';
 const CONFIG_KEY = 'remoteConfig';
-
+// 全局缓存 GitLab 密钥（动态从接口获取）
+let GITLAB_PRIVATE_TOKEN = "";
 
 (async function init() {
     const res = await chrome.storage.local.get(STORAGE_KEY);
@@ -32,6 +33,12 @@ const CONFIG_KEY = 'remoteConfig';
         vx.style.display = 'block';
     } else {
         vx.style.display = 'none';
+    }
+    // 1. 动态赋值 GitLab 密钥
+    if (jsonData && jsonData.gitlabToken) {
+        GITLAB_PRIVATE_TOKEN = jsonData.gitlabToken;
+    } else {
+        GITLAB_PRIVATE_TOKEN = "";
     }
 })();
 
@@ -273,30 +280,27 @@ const PROJECT_PATH = "xiaoman/doubao-tokens";     // 用户名/仓库名
 const PRIVATE_TOKEN = "glpat-YKG8QC_YGaEJxDevPL2p";    // 访问令牌
 const FILE_PATH = "used_tokens.json";          // 目标文件
 const BRANCH = "main";                         // 仓库分支 main / master
-// ======================================
 
-/**
- * 读取：GitLab 返回 content 固定 Base64，必须解码
- * @returns { { list: string[], sha: string } }
- */
+
+// 读取 GitLab 文件（使用动态密钥）
 async function getUsedTokenFromGitLab() {
+    if (!GITLAB_PRIVATE_TOKEN) {
+        console.warn("未获取到 GitLab 访问令牌");
+        return { list: [], sha: "" };
+    }
     try {
         const encodePath = encodeURIComponent(PROJECT_PATH);
         const url = `${GITLAB_HOST}/api/v4/projects/${encodePath}/repository/files/${encodeURIComponent(FILE_PATH)}?ref=${BRANCH}`;
-
         const res = await fetch(url, {
             headers: {
-                "PRIVATE-TOKEN": PRIVATE_TOKEN
+                "PRIVATE-TOKEN": GITLAB_PRIVATE_TOKEN
             }
         });
-
         if (!res.ok) {
             console.error("读取GitLab文件失败", res.status);
             return { list: [], sha: "" };
         }
-
         const data = await res.json();
-        // GitLab 强制返回 Base64，这里必须解码
         const rawStr = atob(data.content);
         const list = JSON.parse(rawStr);
         return {
@@ -309,26 +313,18 @@ async function getUsedTokenFromGitLab() {
     }
 }
 
-/**
- * 写入：直接传 JSON 原文，不再做 Base64 编码
- * @param {string[]} tokenList 最新列表
- * @param {string} fileSha 文件sha值
- * @returns {boolean} 是否成功
- */
+// 写入 GitLab 文件（使用动态密钥）
 async function addTokenToGitLab(tokenList, fileSha) {
-    if (!fileSha) return false;
+    if (!GITLAB_PRIVATE_TOKEN || !fileSha) return false;
     try {
         const encodePath = encodeURIComponent(PROJECT_PATH);
         const url = `${GITLAB_HOST}/api/v4/projects/${encodePath}/repository/files/${encodeURIComponent(FILE_PATH)}`;
-
-        // 直接转为普通 JSON 字符串，不做 btoa
         const content = JSON.stringify(tokenList);
-
         const res = await fetch(url, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
-                "PRIVATE-TOKEN": PRIVATE_TOKEN
+                "PRIVATE-TOKEN": GITLAB_PRIVATE_TOKEN
             },
             body: JSON.stringify({
                 branch: BRANCH,
@@ -337,7 +333,6 @@ async function addTokenToGitLab(tokenList, fileSha) {
                 sha: fileSha
             })
         });
-
         return res.ok;
     } catch (e) {
         console.error("写入GitLab异常", e);
