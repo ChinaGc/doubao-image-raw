@@ -72,28 +72,82 @@ async function safeRemove(keyArr) {
 }
 
 // ===================== 简易BASE64时效Token工具【替换原JWT代码】 =====================
-/** 解密：token(base64) → 原始过期秒时间戳 */
-
-// 和签发脚本完全一致
 const SEC_KEY = 2789451632;
 const PRE_FIX = "sdf@_k9";
 const SUF_FIX = "&23z_pq";
-/** 解密：token→base64→去前后掩码→异或→真实过期时间戳 */
+const SEP = "|";
+const CHECK_LEN = 8;
+const SALT = "myTokenSalt2026@gitlab"; // 和生成端盐值完全一致
+
+// 同生成端哈希算法
+function strongHash(input, salt, len = CHECK_LEN) {
+    let str = input + salt;
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 33) ^ str.charCodeAt(i);
+    }
+    const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
+    let res = "";
+    let val = Math.abs(hash).toString(16);
+    while (val.length < len) val += val;
+    for (let i = 0; i < len; i++) {
+        res += chars[val.charCodeAt(i) % chars.length];
+    }
+    return res;
+}
+
+/**
+ * 解密 + 完整性强校验
+ * @param {string} token 激活码
+ * @returns {number} 合法返回过期时间戳，非法返回 NaN
+ */
 function decodeExp(token) {
-  try {
-    const raw = atob(token);
-    // 裁剪前缀
-    let body = raw.slice(PRE_FIX.length);
-    // 裁剪后缀
-    body = body.slice(0, body.length - SUF_FIX.length);
-    const cipherNum = Number(body);
-    if (isNaN(cipherNum)) return NaN;
-    // 异或还原原始过期时间
-    const realExp = cipherNum ^ SEC_KEY;
-    return realExp;
-  } catch {
-    return NaN;
-  }
+    try {
+        // 1. Base64 解码
+        const raw = atob(token);
+
+        // 2. 强制校验前后固定标记（篡改头尾直接失败）
+        if (!raw.startsWith(PRE_FIX) || !raw.endsWith(SUF_FIX)) {
+            return NaN;
+        }
+
+        // 3. 裁剪固定前缀后缀
+        let body = raw.slice(PRE_FIX.length);
+        body = body.slice(0, body.length - SUF_FIX.length);
+
+        // 4. 拆分 主体内容 + 校验码
+        const bodyArr = body.split(SEP);
+        // 格式固定：主体三段 + 校验码 → 数组长度必须 = 4
+        if (bodyArr.length !== 4) {
+            return NaN;
+        }
+
+        const part1 = bodyArr[0];
+        const part2 = bodyArr[1];
+        const part3 = bodyArr[2];
+        const inputCheck = bodyArr[3];
+
+        // 5. 校验码长度强制校验
+        if (inputCheck.length !== CHECK_LEN) {
+            return NaN;
+        }
+
+        // 6. 重组原始主体，重新计算哈希比对
+        const innerBody = `${part1}${SEP}${part2}${SEP}${part3}`;
+        const realCheck = strongHash(innerBody, SALT, CHECK_LEN);
+        if (inputCheck !== realCheck) {
+            return NaN;
+        }
+
+        // 7. 解析过期时间
+        const cipherNum = Number(part1);
+        if (isNaN(cipherNum)) {
+            return NaN;
+        }
+        return cipherNum ^ SEC_KEY;
+    } catch (e) {
+        return NaN;
+    }
 }
 
 /** 简易token时效校验（替换旧JWT校验） */
@@ -112,8 +166,6 @@ async function checkUserToken() {
     }
     return { valid: true };
 }
-
-
 
 
 // ===================== 通用工具方法 =====================

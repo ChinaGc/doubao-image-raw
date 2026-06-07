@@ -11,7 +11,7 @@
     ],
     "host_permissions": [
         "https://www.doubao.com/*",
-        "https://www.xiaoman999.com/*"
+        "https://*.xiaoman999.com/*"
     ],
     "icons": {
         "16": "icons/icon.png",
