@@ -22,18 +22,18 @@ let GITLAB_PRIVATE_TOKEN = "";
 
     let jsonData = await getJsonData();
     // 兼容逻辑：无jsonData / showVx 明确为 false → 隐藏；其余情况正常展示 TG版专属
-    // if (jsonData && jsonData.showVx !== false && jsonData.vx) {
-    //     vx.innerHTML = `作者微信号：<b>${jsonData.vx}</b>`;
-    //     vx.style.display = 'block';
-    // } else {
-    //     vx.style.display = 'none';
-    // }
-    if (jsonData && jsonData.vx) {
+    if (jsonData && jsonData.showVx !== false && jsonData.vx) {
         vx.innerHTML = `作者微信号：<b>${jsonData.vx}</b>`;
         vx.style.display = 'block';
     } else {
         vx.style.display = 'none';
     }
+    // if (jsonData && jsonData.vx) {
+    //     vx.innerHTML = `作者微信号：<b>${jsonData.vx}</b>`;
+    //     vx.style.display = 'block';
+    // } else {
+    //     vx.style.display = 'none';
+    // }
     // 1. 动态赋值 GitLab 密钥
     if (jsonData && jsonData.gitlabToken) {
         GITLAB_PRIVATE_TOKEN = jsonData.gitlabToken;
