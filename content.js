@@ -71,82 +71,89 @@ async function safeRemove(keyArr) {
     }
 }
 
-// ===================== 简易BASE64时效Token工具【替换原JWT代码】 =====================
-const SEC_KEY = 2789451632;
-const PRE_FIX = "sdf@_k9";
-const SUF_FIX = "&23z_pq";
-const SEP = "|";
-const CHECK_LEN = 8;
-const SALT = "myTokenSalt2026@gitlab"; // 和生成端盐值完全一致
+//================== token验证部分 =====================
+const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJL3QC7MJ/jP/bsx6oeBQUkrq/guJ
+Rrs4FFMs4wA/DouqzyBbWuLCCTrh17+txuncmcAe+rBJImjyffa7SdX3Hg==
+-----END PUBLIC KEY-----`;
 
-// 同生成端哈希算法
-function strongHash(input, salt, len = CHECK_LEN) {
-    let str = input + salt;
-    let hash = 5381;
-    for (let i = 0; i < str.length; i++) {
-        hash = (hash * 33) ^ str.charCodeAt(i);
-    }
-    const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
-    let res = "";
-    let val = Math.abs(hash).toString(16);
-    while (val.length < len) val += val;
-    for (let i = 0; i < len; i++) {
-        res += chars[val.charCodeAt(i) % chars.length];
-    }
-    return res;
+async function importPublicKey(pem) {
+    const pemBody = pem
+        .replace(
+            '-----BEGIN PUBLIC KEY-----',
+            ''
+        )
+        .replace(
+            '-----END PUBLIC KEY-----',
+            ''
+        )
+        .replace(/\s+/g, '');
+    const binary = Uint8Array.from(
+        atob(pemBody),
+        c => c.charCodeAt(0)
+    );
+    return crypto.subtle.importKey(
+        'spki',
+        binary.buffer,
+        {
+            name: 'ECDSA',
+            namedCurve: 'P-256'
+        },
+        false,
+        ['verify']
+    );
 }
 
-/**
- * 解密 + 完整性强校验
- * @param {string} token 激活码
- * @returns {number} 合法返回过期时间戳，非法返回 NaN
- */
-function decodeExp(token) {
+async function checkTokenValid(token) {
     try {
-        // 1. Base64 解码
-        const raw = atob(token);
-
-        // 2. 强制校验前后固定标记（篡改头尾直接失败）
-        if (!raw.startsWith(PRE_FIX) || !raw.endsWith(SUF_FIX)) {
-            return NaN;
+        if (!token) {
+            return false;
         }
-
-        // 3. 裁剪固定前缀后缀
-        let body = raw.slice(PRE_FIX.length);
-        body = body.slice(0, body.length - SUF_FIX.length);
-
-        // 4. 拆分 主体内容 + 校验码
-        const bodyArr = body.split(SEP);
-        // 格式固定：主体三段 + 校验码 → 数组长度必须 = 4
-        if (bodyArr.length !== 4) {
-            return NaN;
+        const arr = token.split('.');
+        if (arr.length !== 2) {
+            return false;
         }
-
-        const part1 = bodyArr[0];
-        const part2 = bodyArr[1];
-        const part3 = bodyArr[2];
-        const inputCheck = bodyArr[3];
-
-        // 5. 校验码长度强制校验
-        if (inputCheck.length !== CHECK_LEN) {
-            return NaN;
+        const payloadPart = arr[0];
+        const signPart = arr[1];
+        const payloadStr =
+            base64UrlDecode(payloadPart);
+        const payload =
+            JSON.parse(payloadStr);
+        if (!payload.exp) {
+            return false;
         }
-
-        // 6. 重组原始主体，重新计算哈希比对
-        const innerBody = `${part1}${SEP}${part2}${SEP}${part3}`;
-        const realCheck = strongHash(innerBody, SALT, CHECK_LEN);
-        if (inputCheck !== realCheck) {
-            return NaN;
+        const now =
+            Math.floor(Date.now() / 1000);
+        if (payload.exp < now) {
+            return false;
         }
-
-        // 7. 解析过期时间
-        const cipherNum = Number(part1);
-        if (isNaN(cipherNum)) {
-            return NaN;
-        }
-        return cipherNum ^ SEC_KEY;
+        const publicKey =
+            await importPublicKey(
+                PUBLIC_KEY
+            );
+        const signature =
+            Uint8Array.from(
+                atob(
+                    signPart
+                        .replace(/-/g, '+')
+                        .replace(/_/g, '/')
+                ),
+                c => c.charCodeAt(0)
+            );
+        return await crypto.subtle.verify(
+            {
+                name: 'ECDSA',
+                hash: 'SHA-256'
+            },
+            publicKey,
+            signature,
+            new TextEncoder().encode(
+                payloadStr
+            )
+        );
     } catch (e) {
-        return NaN;
+        console.error(e);
+        return false;
     }
 }
 
@@ -159,12 +166,19 @@ async function checkUserToken() {
         return { valid: false, msg: '激活码为空，请在插件弹窗填写激活码', count: 0 };
     }
     // 解码
-    const exp = decodeExp(token);
-    const nowSec = Date.now() / 1000;
-    if (isNaN(exp) || exp < nowSec) {
+    const exp = await checkTokenValid(token);
+    if (!exp) {
         return { valid: false, msg: '激活码无效或已过期，请联系作者重新获取', count: 0 };
     }
     return { valid: true };
+}
+
+function base64UrlDecode(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) {
+        str += '=';
+    }
+    return atob(str);
 }
 
 

@@ -9,6 +9,67 @@ const CONFIG_KEY = 'remoteConfig';
 // 全局缓存 GitLab 密钥（动态从接口获取）
 let GITLAB_PRIVATE_TOKEN = "";
 
+// ===================== AES 加密配置（自行替换为你的密钥/IV） =====================
+// ===================== AES 解密配置 & 工具函数 =====================
+// 64位十六进制 = 32字节(AES-256)，32位十六进制 = 16字节(IV)
+const AES_KEY_HEX = "5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99";
+const AES_IV_HEX = "1234567890abcdef1234567890abcdef";
+
+/**
+ * 十六进制字符串 → Uint8Array
+ * @param {string} hex
+ * @returns {Uint8Array}
+ */
+function hexToUint8Array(hex) {
+    const len = hex.length;
+    const arr = new Uint8Array(len / 2);
+    for (let i = 0; i < len; i += 2) {
+        arr[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return arr;
+}
+
+/**
+ * AES-256-CBC 解密 Base64 密文
+ * @param {string} cipherBase64
+ * @returns {string|null}
+ */
+async function aesDecrypt(cipherBase64) {
+    try {
+        // 转成标准字节数组
+        const keyBytes = hexToUint8Array(AES_KEY_HEX);
+        const ivBytes = hexToUint8Array(AES_IV_HEX);
+
+        // 导入密钥
+        const key = await crypto.subtle.importKey(
+            "raw",
+            keyBytes,
+            { name: "AES-CBC", length: 256 },
+            false,
+            ["decrypt"]
+        );
+
+        // Base64 → 二进制
+        const cipherBin = Uint8Array.from(
+            atob(cipherBase64),
+            c => c.charCodeAt(0)
+        );
+
+        // 解密
+        const plainBin = await crypto.subtle.decrypt(
+            { name: "AES-CBC", iv: ivBytes },
+            key,
+            cipherBin
+        );
+
+        return new TextDecoder("utf-8").decode(plainBin);
+    } catch (e) {
+        console.error("AES解密失败：", e);
+        return null;
+    }
+}
+
+// =====================================================================
 (async function init() {
     const res = await chrome.storage.local.get(STORAGE_KEY);
     if (res[STORAGE_KEY]) {
@@ -22,30 +83,29 @@ let GITLAB_PRIVATE_TOKEN = "";
 
     let jsonData = await getJsonData();
     // 兼容逻辑：无jsonData / showVx 明确为 false → 隐藏；其余情况正常展示 TG版专属
-    if (jsonData && jsonData.showVx !== false && jsonData.vx) {
-        vx.innerHTML = `作者微信号：<b>${jsonData.vx}</b>`;
-        vx.style.display = 'block';
-    } else {
-        vx.style.display = 'none';
-    }
-    // if (jsonData && jsonData.vx) {
+    // if (jsonData && jsonData.showVx !== false && jsonData.vx) {
     //     vx.innerHTML = `作者微信号：<b>${jsonData.vx}</b>`;
     //     vx.style.display = 'block';
     // } else {
     //     vx.style.display = 'none';
     // }
-    // 1. 动态赋值 GitLab 密钥
+    if (jsonData && jsonData.vx) {
+        vx.innerHTML = `作者微信号：<b>${jsonData.vx}</b>`;
+        vx.style.display = 'block';
+    } else {
+        vx.style.display = 'none';
+    }
+    // ========== 核心改造：AES解密 gitlabToken 密文 ==========
     if (jsonData && jsonData.gitlabToken) {
-        GITLAB_PRIVATE_TOKEN = jsonData.gitlabToken;
+        const cipherText = jsonData.gitlabToken;
+        const plainToken = await aesDecrypt(cipherText);
+        GITLAB_PRIVATE_TOKEN = plainToken || "";
     } else {
         GITLAB_PRIVATE_TOKEN = "";
     }
 })();
 
 
-
-
-// 固定格式 yyyy-mm-dd
 function secToDate(sec) {
     const d = new Date(sec * 1000);
     const y = d.getFullYear();
@@ -54,25 +114,62 @@ function secToDate(sec) {
     return `${y}-${m}-${day}`;
 }
 
+function base64UrlDecode(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) {
+        str += '=';
+    }
+    return atob(str);
+}
+
+/**
+ * 仅解析过期时间
+ */
+function getTokenExp(token) {
+    try {
+        const arr = token.split('.');
+        if (arr.length !== 2) {
+            return null;
+        }
+        const payload = JSON.parse(
+            base64UrlDecode(arr[0])
+        );
+        return payload.exp || null;
+    } catch {
+        return null;
+    }
+}
+
 function refreshExpView(token) {
+
     if (!token) {
         expDateEl.textContent = "未填入激活码";
         expDateEl.style.color = "#999";
         return;
     }
-    const expSec = decodeExp(token);
-    const nowSec = Date.now() / 1000;
+
+    const expSec = getTokenExp(token);
+
     if (!expSec) {
         expDateEl.textContent = "激活码格式错误";
         expDateEl.style.color = "red";
-    } else if (expSec < nowSec) {
-        expDateEl.textContent = `已过期｜到期：${secToDate(expSec)}`;
+        return;
+    }
+
+    const nowSec = Date.now() / 1000;
+    if (expSec < nowSec) {
+        expDateEl.textContent =
+            `已过期｜到期：${secToDate(expSec)}`;
         expDateEl.style.color = "red";
+
     } else {
-        expDateEl.textContent = `有效｜到期：${secToDate(expSec)}`;
+        expDateEl.textContent =
+            `有效｜到期：${secToDate(expSec)}`;
         expDateEl.style.color = "#099441";
     }
 }
+
+
 
 function setStatus(text, color = '#666') {
     statusEl.innerHTML = text;
@@ -120,8 +217,9 @@ scanBtn.onclick = async () => {
 
     // 第二步：本地无记录 → 先校验Token格式+有效期，拦截脏数据
     setStatus('校验激活码有效性...');
-    if (!checkTokenValid(token)) {
-        setStatus('激活码格式错误或已过期', 'red');
+    const checkResult = await checkTokenValid(token);
+    if (!checkResult) {
+        setStatus('激活码不合法或已过期', 'red');
         scanBtn.disabled = false;
         return;
     }
@@ -183,96 +281,91 @@ async function getJsonData() {
     }
 }
 
-const SEC_KEY = 2789451632;
-const PRE_FIX = "sdf@_k9";
-const SUF_FIX = "&23z_pq";
-const SEP = "|";
-const CHECK_LEN = 8;
-const SALT = "myTokenSalt2026@gitlab"; // 和生成端盐值完全一致
+//================== token验证部分 =====================
+const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJL3QC7MJ/jP/bsx6oeBQUkrq/guJ
+Rrs4FFMs4wA/DouqzyBbWuLCCTrh17+txuncmcAe+rBJImjyffa7SdX3Hg==
+-----END PUBLIC KEY-----`;
 
-// 同生成端哈希算法
-function strongHash(input, salt, len = CHECK_LEN) {
-    let str = input + salt;
-    let hash = 5381;
-    for (let i = 0; i < str.length; i++) {
-        hash = (hash * 33) ^ str.charCodeAt(i);
-    }
-    const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
-    let res = "";
-    let val = Math.abs(hash).toString(16);
-    while (val.length < len) val += val;
-    for (let i = 0; i < len; i++) {
-        res += chars[val.charCodeAt(i) % chars.length];
-    }
-    return res;
+async function importPublicKey(pem) {
+    const pemBody = pem
+        .replace(
+            '-----BEGIN PUBLIC KEY-----',
+            ''
+        )
+        .replace(
+            '-----END PUBLIC KEY-----',
+            ''
+        )
+        .replace(/\s+/g, '');
+    const binary = Uint8Array.from(
+        atob(pemBody),
+        c => c.charCodeAt(0)
+    );
+    return crypto.subtle.importKey(
+        'spki',
+        binary.buffer,
+        {
+            name: 'ECDSA',
+            namedCurve: 'P-256'
+        },
+        false,
+        ['verify']
+    );
 }
 
-/**
- * 解密 + 完整性强校验
- * @param {string} token 激活码
- * @returns {number} 合法返回过期时间戳，非法返回 NaN
- */
-function decodeExp(token) {
+async function checkTokenValid(token) {
     try {
-        // 1. Base64 解码
-        const raw = atob(token);
-
-        // 2. 强制校验前后固定标记（篡改头尾直接失败）
-        if (!raw.startsWith(PRE_FIX) || !raw.endsWith(SUF_FIX)) {
-            return NaN;
+        if (!token) {
+            return false;
         }
-
-        // 3. 裁剪固定前缀后缀
-        let body = raw.slice(PRE_FIX.length);
-        body = body.slice(0, body.length - SUF_FIX.length);
-
-        // 4. 拆分 主体内容 + 校验码
-        const bodyArr = body.split(SEP);
-        // 格式固定：主体三段 + 校验码 → 数组长度必须 = 4
-        if (bodyArr.length !== 4) {
-            return NaN;
+        const arr = token.split('.');
+        if (arr.length !== 2) {
+            return false;
         }
-
-        const part1 = bodyArr[0];
-        const part2 = bodyArr[1];
-        const part3 = bodyArr[2];
-        const inputCheck = bodyArr[3];
-
-        // 5. 校验码长度强制校验
-        if (inputCheck.length !== CHECK_LEN) {
-            return NaN;
+        const payloadPart = arr[0];
+        const signPart = arr[1];
+        const payloadStr =
+            base64UrlDecode(payloadPart);
+        const payload =
+            JSON.parse(payloadStr);
+        if (!payload.exp) {
+            return false;
         }
-
-        // 6. 重组原始主体，重新计算哈希比对
-        const innerBody = `${part1}${SEP}${part2}${SEP}${part3}`;
-        const realCheck = strongHash(innerBody, SALT, CHECK_LEN);
-        if (inputCheck !== realCheck) {
-            return NaN;
+        const now =
+            Math.floor(Date.now() / 1000);
+        if (payload.exp < now) {
+            return false;
         }
-
-        // 7. 解析过期时间
-        const cipherNum = Number(part1);
-        if (isNaN(cipherNum)) {
-            return NaN;
-        }
-        return cipherNum ^ SEC_KEY;
+        const publicKey =
+            await importPublicKey(
+                PUBLIC_KEY
+            );
+        const signature =
+            Uint8Array.from(
+                atob(
+                    signPart
+                        .replace(/-/g, '+')
+                        .replace(/_/g, '/')
+                ),
+                c => c.charCodeAt(0)
+            );
+        return await crypto.subtle.verify(
+            {
+                name: 'ECDSA',
+                hash: 'SHA-256'
+            },
+            publicKey,
+            signature,
+            new TextEncoder().encode(
+                payloadStr
+            )
+        );
     } catch (e) {
-        return NaN;
+        console.error(e);
+        return false;
     }
 }
-
-/**
- * 校验Token是否有效（格式 + 未过期）
- * @param {string} token 激活码
- * @returns {boolean}
- */
-function checkTokenValid(token) {
-    const expTime = decodeExp(token);
-    if (isNaN(expTime)) return false;
-    const now = Math.floor(Date.now() / 1000);
-    return expTime > now;
-}
-
 
 // ========== 请手动修改以下配置 ==========
 const GITLAB_HOST = "https://gitlab.xiaoman999.com";  // 你的自建GitLab地址
@@ -338,3 +431,5 @@ async function addTokenToGitLab(tokenList, fileSha) {
         return false;
     }
 }
+
+
