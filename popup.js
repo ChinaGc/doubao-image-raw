@@ -345,7 +345,8 @@ async function addTokenToXM(token) {
             },
             body: `title=${getTokenSuffix(token)}`
         });
-        return res.ok;
+        const r = await res.json();
+        return res.ok && r.success;
     } catch (e) {
         console.error("写入XM异常", e);
         return false;
