@@ -482,11 +482,10 @@ async function createDownloadLink(img) {
 
         button.disabled = true;
         button.innerText = '正在下载....';
-
         chrome.runtime.sendMessage({
             action: "downloadImage",
             url: data.image_ori_raw.url,
-            filename: `${data.gen_params.prompt}-无水印原图.png`
+            filename: `${Date.now()}-无水印原图.png`
         }, (res) => {
             if (chrome.runtime.lastError) {
                 button.innerText = '下载失败';
